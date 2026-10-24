@@ -1,0 +1,6 @@
+# claude-sync push policy -- read by tools/githooks/pre-push. Pick ONE:
+#   none   block every push (default, safest)
+#   code   code/<name>/ repos push freely; the knowledge base stays local
+#   all    everything may push, the knowledge base included
+#   or list repo names, one per line, to allow just those
+none

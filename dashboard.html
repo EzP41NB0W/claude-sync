@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>claude-sync</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#0d0f0e}
+:root{
+  --bg:#0d0f0e;--bg2:#111612;--bg3:#161d18;--border:#2a3a30;
+  --mint:#00ff88;--mint2:#00cc6a;--muted:#7a9484;--warn:#ff6b35;
+  --text:#dcf0e0;--dim:#4a5a50;
+}
+.root{font-family:'JetBrains Mono',monospace;background:var(--bg);color:var(--text);height:100vh;display:grid;grid-template-rows:auto 1fr;font-size:13px;width:100%;overflow:hidden}
+.topbar{display:flex;align-items:center;gap:0;border-bottom:1px solid var(--border);background:var(--bg2);min-width:0}
+.topbar-brand{padding:10px 14px;color:var(--mint);font-weight:700;font-size:13px;border-right:1px solid var(--border);white-space:nowrap;flex-shrink:0}
+.topbar-info{display:flex;align-items:center;flex:1;overflow:hidden;min-width:0}
+.topbar-cell{padding:10px 10px;border-right:1px solid var(--border);color:var(--muted);font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.topbar-cell span{color:var(--text);margin-left:4px}
+.topbar-actions{display:flex;align-items:center;gap:6px;padding:8px 10px;flex-shrink:0}
+.conn-dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:6px}
+.conn-ok{background:var(--mint)}
+.conn-bad{background:var(--warn)}
+.btn{font-family:'JetBrains Mono',monospace;font-size:11px;padding:6px 11px;border:1px solid var(--border);background:var(--bg3);color:var(--text);cursor:pointer;white-space:nowrap;font-weight:500;display:flex;align-items:center;gap:4px}
+.btn:hover{border-color:var(--mint);color:var(--mint);background:rgba(0,255,136,0.08)}
+.btn:disabled{opacity:0.4;cursor:not-allowed}
+.btn-primary{border-color:var(--mint2);color:var(--mint);background:rgba(0,255,136,0.06)}
+.btn-primary:hover{background:rgba(0,255,136,0.14)}
+.body{display:grid;grid-template-columns:200px minmax(0,1fr) 260px;min-height:0;overflow:hidden}
+.panel{border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;min-width:0}
+.panel:last-child{border-right:none}
+.panel-head{padding:7px 10px;border-bottom:1px solid var(--border);color:var(--muted);font-size:10px;letter-spacing:.1em;display:flex;align-items:center;justify-content:space-between;background:var(--bg2);flex-shrink:0}
+.panel-head-label{color:var(--mint);font-size:10px;letter-spacing:.1em}
+.panel-body{flex:1;overflow-y:auto;padding:10px;min-height:0}
+.panel-body::-webkit-scrollbar{width:3px}
+.panel-body::-webkit-scrollbar-thumb{background:var(--dim)}
+.section{margin-bottom:14px}
+.section-label{font-size:10px;color:var(--muted);letter-spacing:.1em;margin-bottom:5px}
+.field{background:var(--bg3);border:1px solid var(--border);padding:5px 8px;margin-bottom:3px;min-width:0;overflow:hidden}
+.field-key{color:var(--muted);font-size:10px}
+.field-val{color:var(--text);font-size:11px;word-break:break-all;margin-top:2px;overflow:hidden;text-overflow:ellipsis}
+.watcher-toggle{display:flex;align-items:center;gap:8px;padding:7px 8px;border:1px solid var(--border);background:var(--bg3);cursor:pointer;margin-bottom:6px}
+.watcher-toggle:hover{border-color:var(--mint)}
+.status-dot{display:inline-block;width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.dot-active{background:var(--mint)}
+.dot-idle{background:var(--muted)}
+.watcher-label{font-size:11px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sect-item{display:flex;align-items:center;gap:6px;padding:6px 8px;border:1px solid var(--border);background:var(--bg3);margin-bottom:4px;cursor:pointer;min-width:0}
+.sect-item:hover{border-color:var(--mint)}
+.sect-name{color:var(--text);font-size:11px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sect-name.is-learnings{color:#ffcc44}
+.sect-meta{color:var(--muted);font-size:9px;flex-shrink:0}
+.log{flex:1;overflow-y:auto;padding:10px 12px;background:var(--bg);min-height:0}
+.log::-webkit-scrollbar{width:3px}
+.log::-webkit-scrollbar-thumb{background:var(--dim)}
+.log-line{font-size:11px;line-height:1.8;white-space:pre-wrap;word-break:break-all}
+.log-ts{color:var(--dim)}
+.log-ok{color:var(--mint)}
+.log-info{color:var(--text)}
+.log-warn{color:#ffcc44}
+.log-err{color:var(--warn)}
+.log-dim{color:var(--muted)}
+.log-input{display:flex;border-top:1px solid var(--border);background:var(--bg2);flex-shrink:0}
+.log-prompt{padding:9px 10px;color:var(--mint);flex-shrink:0;font-size:12px}
+.log-field{flex:1;background:transparent;border:none;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;outline:none;padding:9px 0;min-width:0}
+.log-send{padding:9px 12px;background:transparent;border:none;border-left:1px solid var(--border);color:var(--mint);cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:11px;flex-shrink:0;font-weight:500}
+.log-send:hover{background:rgba(0,255,136,0.1)}
+.note-panel{display:flex;flex-direction:column;height:100%;min-width:0;overflow:hidden}
+.note-tabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0}
+.note-tab{flex:1;padding:7px 4px;font-family:'JetBrains Mono',monospace;font-size:10px;border:none;background:transparent;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;white-space:nowrap;overflow:hidden;font-weight:500}
+.note-tab.active{color:var(--mint);border-bottom-color:var(--mint);background:var(--bg3)}
+.note-tab:hover{color:var(--text)}
+.note-list{flex:1;overflow-y:auto;padding:8px;min-height:0}
+.note-list::-webkit-scrollbar{width:3px}
+.note-list::-webkit-scrollbar-thumb{background:var(--dim)}
+.note-entry{padding:6px 8px;border:1px solid var(--border);margin-bottom:5px;background:var(--bg3);min-width:0;overflow:hidden}
+.note-entry-head{display:flex;justify-content:space-between;margin-bottom:3px;gap:4px}
+.note-author{font-size:9px;color:var(--mint);letter-spacing:.06em;flex-shrink:0;font-weight:500}
+.note-author.claude{color:#88aaff}
+.note-time{font-size:9px;color:var(--muted);flex-shrink:0}
+.note-text{font-size:11px;color:var(--text);line-height:1.5;word-break:break-word;overflow-wrap:break-word}
+.note-compose{border-top:1px solid var(--border);padding:8px;flex-shrink:0}
+.note-textarea{width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;padding:6px 8px;resize:none;outline:none;line-height:1.5}
+.note-textarea:focus{border-color:var(--mint)}
+.note-actions{display:flex;gap:5px;margin-top:5px;align-items:center}
+.note-who{display:flex;gap:3px}
+.who-btn{font-family:'JetBrains Mono',monospace;font-size:10px;padding:4px 8px;border:1px solid var(--border);background:var(--bg3);cursor:pointer;color:var(--muted);font-weight:500}
+.who-btn.active-me{border-color:var(--mint);color:var(--mint);background:rgba(0,255,136,0.1)}
+.who-btn.active-claude{border-color:#88aaff;color:#88aaff;background:rgba(136,170,255,0.1)}
+.note-submit{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:10px;padding:4px 10px;border:1px solid var(--mint2);background:rgba(0,255,136,0.06);color:var(--mint);cursor:pointer;white-space:nowrap;font-weight:500}
+.note-submit:hover{background:rgba(0,255,136,0.16)}
+.section-viewer{position:absolute;inset:0;background:var(--bg);z-index:10;display:flex;flex-direction:column;overflow:hidden}
+.flag-head{padding:10px 14px;border-bottom:1px solid var(--border);background:var(--bg2);display:flex;align-items:center;gap:10px;flex-shrink:0}
+.flag-title{color:var(--mint);font-size:12px;flex:1;font-weight:500}
+.flag-close{background:var(--bg3);border:1px solid var(--border);color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:10px;padding:5px 10px;cursor:pointer}
+.flag-close:hover{border-color:var(--mint);color:var(--mint)}
+.flag-body{flex:1;overflow-y:auto;padding:12px 14px;min-height:0}
+.section-content{font-size:11px;line-height:1.7;color:var(--text);white-space:pre-wrap;word-break:break-word;font-family:'JetBrains Mono',monospace}
+.relative{position:relative;overflow:hidden}
+.offline-banner{background:rgba(255,107,53,0.1);border:1px solid var(--warn);color:var(--warn);padding:10px 14px;font-size:11px;margin:10px;display:none}
+</style>
+</head>
+<body>
+<div class="root" id="app">
+<div class="topbar">
+  <div class="topbar-brand">⬡ claude-sync</div>
+  <div class="topbar-info">
+    <div class="topbar-cell"><span class="conn-dot conn-bad" id="conn-dot"></span>bridge<span id="conn-status">connecting…</span></div>
+    <div class="topbar-cell">sections<span id="section-count">—</span></div>
+    <div class="topbar-cell">lines<span id="total-lines">—</span></div>
+    <div class="topbar-cell">last build<span id="last-build">—</span></div>
+  </div>
+  <div class="topbar-actions">
+    <button class="btn btn-primary" id="btn-build">↻ rebuild</button>
+  </div>
+</div>
+<div class="body">
+
+<div class="panel">
+  <div class="panel-head"><span class="panel-head-label">STATUS</span></div>
+  <div class="panel-body">
+    <div class="offline-banner" id="offline-banner" style="display:none">
+      bridge not reachable at 127.0.0.1:5151 — run <b>python server.py</b> in claude-sync/, then refresh.
+    </div>
+    <div class="section">
+      <div class="section-label">WATCHER</div>
+      <div class="watcher-toggle" id="watcher-toggle">
+        <span class="status-dot dot-idle" id="watcher-dot"></span>
+        <span class="watcher-label" id="watcher-label">stopped</span>
+      </div>
+      <div style="font-size:10px;color:var(--muted);line-height:1.5">polls 5s · drains scratch · rebuilds rollup on change</div>
+    </div>
+    <div class="section">
+      <div class="section-label">SECTIONS</div>
+      <div id="sect-list"><div style="color:var(--muted);font-size:11px">loading…</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="panel relative" id="log-panel">
+  <div class="panel-head"><span class="panel-head-label">ACTIVITY LOG</span><span style="font-size:10px;color:var(--muted)" id="log-status">idle</span></div>
+  <div class="log" id="log-out"></div>
+  <div class="log-input">
+    <span class="log-prompt">▸</span>
+    <input class="log-field" id="cmd-input" placeholder='learn "…"  rebuild  find <project>  watch  help' />
+    <button class="log-send" id="cmd-send">run</button>
+  </div>
+
+  <div class="section-viewer" id="section-viewer" style="display:none">
+    <div class="flag-head">
+      <span class="flag-title" id="sv-title">—</span>
+      <button class="flag-close" id="sv-close">✕ close</button>
+    </div>
+    <div class="flag-body">
+      <div class="section-content" id="sv-content"></div>
+    </div>
+  </div>
+</div>
+
+<div class="panel note-panel">
+  <div class="panel-head"><span class="panel-head-label">KNOWLEDGE BASE</span><button class="flag-close" id="btn-clear-notes" style="font-size:9px;padding:3px 8px">clear</button></div>
+  <div class="note-tabs">
+    <button class="note-tab active" id="tab-all">all</button>
+    <button class="note-tab" id="tab-me">me</button>
+    <button class="note-tab" id="tab-claude">claude</button>
+  </div>
+  <div class="note-list" id="note-list"></div>
+  <div class="note-compose">
+    <textarea class="note-textarea" id="note-input" rows="3" placeholder="log a learning, gotcha, or observation…"></textarea>
+    <div class="note-actions">
+      <div class="note-who">
+        <button class="who-btn active-me" id="who-me">me</button>
+        <button class="who-btn" id="who-claude">claude</button>
+      </div>
+      <button class="note-submit" id="note-submit">+ log it</button>
+    </div>
+  </div>
+</div>
+
+</div>
+</div>
+<script>
+const API = "http://127.0.0.1:5151";
+let activeTab = "all", activeWho = "me";
+
+async function api(path, opts) {
+  const res = await fetch(API + path, opts);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const err = new Error(body.error || res.statusText);
+    err.status = res.status; err.body = body;
+    throw err;
+  }
+  return res.json();
+}
+
+function ts() { const d = new Date(); return d.toTimeString().slice(0,8); }
+function log(txt, cls) {
+  const el = document.getElementById("log-out");
+  const line = document.createElement("div");
+  line.className = "log-line";
+  line.innerHTML = `<span class="log-ts">[${ts()}] </span><span class="${cls}">${txt}</span>`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function relTime(epochSeconds) {
+  if (!epochSeconds) return "never";
+  const diff = Date.now() / 1000 - epochSeconds;
+  if (diff < 60) return "just now";
+  if (diff < 3600) return Math.floor(diff / 60) + "m ago";
+  if (diff < 86400) return Math.floor(diff / 3600) + "h ago";
+  return Math.floor(diff / 86400) + "d ago";
+}
+
+function renderSections(sections) {
+  const el = document.getElementById("sect-list");
+  if (!sections.length) { el.innerHTML = '<div style="color:var(--muted);font-size:11px">no projects yet</div>'; return; }
+  el.innerHTML = sections.map(name => {
+    const isLearnings = name === "_learnings";
+    return `<div class="sect-item" data-name="${name}"><span class="sect-name ${isLearnings ? "is-learnings" : ""}">${isLearnings ? "★ learnings" : name}</span></div>`;
+  }).join("");
+  el.querySelectorAll(".sect-item").forEach(item => {
+    item.addEventListener("click", () => openSection(item.dataset.name));
+  });
+}
+
+async function refreshStatus() {
+  try {
+    const s = await api("/api/status");
+    document.getElementById("conn-dot").className = "conn-dot conn-ok";
+    document.getElementById("conn-status").textContent = "online";
+    document.getElementById("section-count").textContent = s.section_count;
+    document.getElementById("total-lines").textContent = s.total_lines;
+    document.getElementById("last-build").textContent = relTime(s.last_build);
+    document.getElementById("offline-banner").style.display = "none";
+    const watching = s.watching;
+    document.getElementById("watcher-dot").className = "status-dot " + (watching ? "dot-active" : "dot-idle");
+    document.getElementById("watcher-label").textContent = watching ? "watching knowledge-base/" : "stopped";
+    renderSections(s.sections);
+    return true;
+  } catch (e) {
+    document.getElementById("conn-dot").className = "conn-dot conn-bad";
+    document.getElementById("conn-status").textContent = "offline";
+    document.getElementById("offline-banner").style.display = "block";
+    return false;
+  }
+}
+
+async function runBuild() {
+  log("rebuilding rollup…", "log-dim");
+  try {
+    const data = await api("/api/rollup/build", { method: "POST" });
+    if (data.drained_scratch_notes) log(`drained ${data.drained_scratch_notes} scratch note(s)`, "log-dim");
+    log(`rebuilt — ${data.section_count} section(s) indexed`, "log-ok");
+    refreshStatus();
+  } catch (e) { log("error: " + e.message, "log-err"); }
+}
+
+async function openSection(name) {
+  try {
+    const data = await api("/api/rollup/find/" + encodeURIComponent(name));
+    document.getElementById("sv-title").textContent = name === "_learnings" ? "★ global learnings" : name;
+    document.getElementById("sv-content").textContent = data.content;
+    const v = document.getElementById("section-viewer");
+    v.style.display = "flex"; v.style.flexDirection = "column";
+  } catch (e) { log("error: " + e.message, "log-err"); }
+}
+function closeSectionViewer() { document.getElementById("section-viewer").style.display = "none"; }
+
+async function toggleWatcher() {
+  const dot = document.getElementById("watcher-dot");
+  const running = dot.classList.contains("dot-active");
+  try {
+    await api(running ? "/api/watcher/stop" : "/api/watcher/start", { method: "POST" });
+    log(running ? "watcher stopped" : "watcher started — polling every 5s", running ? "log-warn" : "log-ok");
+    refreshStatus();
+  } catch (e) { log("error: " + e.message, "log-err"); }
+}
+
+let allNotes = [];
+function renderNotes() {
+  const el = document.getElementById("note-list");
+  const filtered = allNotes.filter(n => activeTab === "all" || n.author === activeTab);
+  if (!filtered.length) { el.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:4px">no notes yet</div>'; return; }
+  el.innerHTML = filtered.slice().reverse().map(n => {
+    const time = n.ts ? new Date(n.ts * 1000).toTimeString().slice(0,5) : "";
+    return `<div class="note-entry" data-id="${n.id || ''}"><div class="note-entry-head"><span class="note-author ${n.author === "claude" ? "claude" : ""}">${n.author.toUpperCase()}</span><span style="display:flex;align-items:center;gap:6px"><span class="note-time">${time}</span><span class="note-del" title="delete this note" style="cursor:pointer;color:var(--muted);font-size:11px">✕</span></span></div><div class="note-text">${n.text}</div></div>`;
+  }).join("");
+  el.querySelectorAll(".note-del").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      const id = e.target.closest(".note-entry").dataset.id;
+      if (id) deleteNote(id);
+    });
+  });
+}
+async function deleteNote(id) {
+  try {
+    await api("/api/notes/" + encodeURIComponent(id), { method: "DELETE" });
+    log("note deleted", "log-ok");
+    loadNotes();
+  } catch (e) { log("error deleting note: " + e.message, "log-err"); }
+}
+async function clearNotes(author) {
+  const scope = author ? `${author}'s notes` : "ALL notes";
+  if (!confirm(`Clear ${scope}? This can't be undone.`)) return;
+  try {
+    const qs = author ? "?author=" + encodeURIComponent(author) : "";
+    const r = await api("/api/notes-clear" + qs, { method: "POST" });
+    log(r.message, "log-ok");
+    loadNotes();
+  } catch (e) { log("error clearing notes: " + e.message, "log-err"); }
+}
+async function loadNotes() {
+  try { allNotes = await api("/api/notes"); renderNotes(); } catch (e) { /* offline, skip */ }
+}
+async function addNote(text, author) {
+  try {
+    const r = await api("/api/notes", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ author, text }),
+    });
+    let msg = `logged [${author}]: ${text.slice(0,55)}${text.length>55?"…":""}`;
+    if (r.redacted) msg += ` (${r.redacted} secret(s) redacted)`;
+    log(msg, "log-ok");
+    loadNotes();
+  } catch (e) { log("error logging note: " + e.message, "log-err"); }
+}
+
+function handleCmd(raw) {
+  const cmd = raw.trim();
+  if (!cmd) return;
+  log("▸ " + cmd, "log-dim");
+  if (cmd.startsWith("learn ")) {
+    const txt = cmd.slice(6).replace(/^"|"$/g, "").trim();
+    if (txt) { api("/api/learn", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({text: txt}) })
+      .then(() => { log("recorded to learnings.md and rebuilt", "log-ok"); refreshStatus(); }).catch(e => log("error: " + e.message, "log-err")); }
+  } else if (cmd === "rebuild") runBuild();
+  else if (cmd.startsWith("find ")) openSection(cmd.slice(5).trim());
+  else if (cmd === "watch") toggleWatcher();
+  else if (cmd === "clear") clearNotes(null);
+  else if (cmd === "clear me" || cmd === "clear claude") clearNotes(cmd.slice(6).trim());
+  else if (cmd === "help") log('commands: learn "text" · rebuild · find <project> · watch · clear [me|claude] · help', "log-dim");
+  else log('unknown — try: learn "…" · rebuild · find <project> · watch · clear · help', "log-warn");
+}
+
+document.getElementById("btn-build").addEventListener("click", runBuild);
+document.getElementById("watcher-toggle").addEventListener("click", toggleWatcher);
+document.getElementById("sv-close").addEventListener("click", closeSectionViewer);
+document.getElementById("note-submit").addEventListener("click", () => {
+  const v = document.getElementById("note-input").value.trim();
+  if (!v) return;
+  addNote(v, activeWho);
+  document.getElementById("note-input").value = "";
+});
+document.getElementById("btn-clear-notes").addEventListener("click", () => {
+  clearNotes(activeTab === "all" ? null : activeTab);
+});
+document.getElementById("cmd-send").addEventListener("click", () => {
+  const v = document.getElementById("cmd-input").value;
+  if (v.trim()) { handleCmd(v); document.getElementById("cmd-input").value = ""; }
+});
+document.getElementById("cmd-input").addEventListener("keydown", e => {
+  if (e.key === "Enter" && e.target.value.trim()) { handleCmd(e.target.value); e.target.value = ""; }
+});
+["all", "me", "claude"].forEach(t => {
+  document.getElementById("tab-" + t).addEventListener("click", () => {
+    activeTab = t;
+    ["all","me","claude"].forEach(x => document.getElementById("tab-"+x).classList.toggle("active", x===t));
+    renderNotes();
+  });
+});
+document.getElementById("who-me").addEventListener("click", () => {
+  activeWho = "me";
+  document.getElementById("who-me").className = "who-btn active-me";
+  document.getElementById("who-claude").className = "who-btn";
+});
+document.getElementById("who-claude").addEventListener("click", () => {
+  activeWho = "claude";
+  document.getElementById("who-claude").className = "who-btn active-claude";
+  document.getElementById("who-me").className = "who-btn";
+});
+
+log("claude-sync dashboard loaded", "log-ok");
+log("connecting to bridge at " + API + " …", "log-dim");
+refreshStatus().then(ok => {
+  if (ok) { log("bridge online", "log-ok"); loadNotes(); }
+  else log("bridge offline — start server.py and refresh this page", "log-err");
+});
+setInterval(refreshStatus, 4000);
+</script>
+</body>
+</html>

@@ -1,0 +1,100 @@
+#!/bin/sh
+# commit-msg -- catch the two-layer git trap (learnings 4a).
+#
+# The claude-sync ROOT repo gitignores code/ entirely. So running
+# `git add -A && git commit` at the root after doing work in code/<name>/
+# SUCCEEDS, prints a hash, and contains NONE of the code. This happened for real:
+# a commit titled "widget-lite: bracket becomes a parametric generator"
+# whose diff was handoff.md and rollup chunks.
+#
+# Rule enforced: if this commit message names a project whose OWN repo has
+# uncommitted changes, stop -- you almost certainly meant to commit there.
+# Other dirty repos just get a heads-up.
+#
+# Override:   ALLOW_DIRTY_CODE=1 git commit ...
+root=$(git rev-parse --show-toplevel 2>/dev/null)
+[ -d "$root/code" ] || exit 0                  # only meaningful in the KB root
+[ -f "$root/CLAUDE.md" ] || exit 0
+
+msg=$(cat "$1")
+# normalise: lowercase, collapse - and _ to nothing, so "widget-lite",
+# "widget_lite" and "widgetlite" all match.
+norm() { printf '%s' "$1" | tr 'A-Z' 'a-z' | tr -d '_-'; }
+nmsg=$(norm "$msg")
+
+# Count non-overlapping occurrences of $2 in $1.
+occ() { printf '%s' "$1" | grep -o "$2" | wc -l | tr -d ' '; }
+
+blockers=""; warns=""
+for d in "$root"/code/*/; do
+    [ -d "$d/.git" ] || continue
+    name=$(basename "$d")
+    [ -n "$(git -C "$d" status --porcelain 2>/dev/null)" ] || continue
+    cnt=$(git -C "$d" status --porcelain | wc -l | tr -d ' ')
+    nname=$(norm "$name")
+
+    # A plain substring test is wrong here, and was wrong from the start:
+    # norm "widget-lite" is "widgetlite", which CONTAINS "widget",
+    # so every message about the lite project also flagged its parent. They are
+    # separate projects with separate repos. Fired 2026-09-06 and blocked a
+    # legitimate commit, citing a project the message never mentioned.
+    #
+    # So: count how many times this name appears, then subtract the appearances
+    # that are really a LONGER project name that merely contains it. Counting
+    # rather than just suppressing keeps the guard honest when a message names
+    # both -- "widget-lite ... widget" gives 2 hits against 1 cover,
+    # and still blocks.
+    hits=$(occ "$nmsg" "$nname")
+    covered=0
+    for o in "$root"/code/*/; do
+        [ -d "$o" ] || continue
+        noth=$(norm "$(basename "$o")")
+        [ "$noth" = "$nname" ] && continue
+        case "$noth" in *"$nname"*) ;; *) continue ;; esac
+        covered=$((covered + $(occ "$nmsg" "$noth")))
+    done
+
+    if [ "$hits" -gt "$covered" ]; then
+        blockers="$blockers  $name ($cnt file(s))
+"
+    else
+        warns="$warns  $name ($cnt file(s))
+"
+    fi
+done
+
+if [ -n "$warns" ]; then
+    echo "" >&2
+    echo "  note: uncommitted work in code repos this message does not mention:" >&2
+    printf '%s' "$warns" >&2
+    echo "        (not blocking -- just so it is not forgotten)" >&2
+fi
+
+[ -z "$blockers" ] && exit 0
+[ "$ALLOW_DIRTY_CODE" = "1" ] && {
+    echo "  ALLOW_DIRTY_CODE=1 -- proceeding with a KB-only commit." >&2; exit 0; }
+
+echo "" >&2
+echo "  ==========================================================" >&2
+echo "  COMMIT BLOCKED -- this looks like the two-layer trap" >&2
+echo "  ==========================================================" >&2
+echo "  Your message names these projects, and their OWN repos have" >&2
+echo "  uncommitted changes:" >&2
+echo "" >&2
+printf '%s' "$blockers" >&2
+echo "" >&2
+echo "  The root repo gitignores code/, so this commit would contain" >&2
+echo "  NONE of that work -- and would still succeed and print a hash." >&2
+echo "" >&2
+echo "  Commit the code in its own repo first:" >&2
+echo "    cd code/<name>" >&2
+echo "    git add -A" >&2
+echo "    git commit" >&2
+echo "" >&2
+echo "  Then verify it landed:  git show --stat HEAD" >&2
+echo "" >&2
+echo "  If this really is a notes-only commit:" >&2
+echo "    ALLOW_DIRTY_CODE=1 git commit ..." >&2
+echo "  ==========================================================" >&2
+echo "" >&2
+exit 1

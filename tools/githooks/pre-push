@@ -1,0 +1,69 @@
+#!/bin/sh
+# pre-push -- nothing leaves this machine unless your push policy says so.
+#
+# Every repo wired to this hooks dir (the knowledge-base root and each
+# code/<name>/ repo, via tools/githooks/install.sh) asks this script before a
+# push. The answer comes from tools/githooks/push-policy, ONE of:
+#
+#   none        (default) block every push. A push is always a decision,
+#               never a step in a routine -- an agent with a "commit and
+#               push" habit gets stopped here.
+#   code        code/<name>/ repos push freely; the knowledge-base root (your
+#               private notes, handoffs, learnings) stays blocked.
+#   all         everything pushes, the knowledge base included. Only if you
+#               really want your notes on a remote.
+#   <names>     one repo name per line: just those repos may push.
+#
+# Override for one push, whatever the policy:   ALLOW_PUSH=1 git push
+[ "$ALLOW_PUSH" = "1" ] && exit 0
+
+hooks_dir=$(cd "$(dirname "$0")" && pwd)
+policy_file="$hooks_dir/push-policy"
+policy=$(grep -v '^[[:space:]]*#' "$policy_file" 2>/dev/null | sed '/^[[:space:]]*$/d')
+[ -n "$policy" ] || policy="none"
+
+remote_name="$1"
+remote_url="$2"
+top=$(git rev-parse --show-toplevel 2>/dev/null)
+repo=$(basename "$top")
+branch=$(git branch --show-current 2>/dev/null)
+# ask git for BOTH paths so they share a format: on Windows, pwd says /c/...
+# while git says C:/..., and a mismatch silently makes every repo "other"
+kb_root=$(git -C "$hooks_dir/../.." rev-parse --show-toplevel 2>/dev/null)
+case "$top" in
+    "$kb_root/code/"*) kind="code" ;;
+    "$kb_root")        kind="kb"   ;;
+    *)                 kind="other" ;;
+esac
+
+allowed=0
+case "$policy" in
+    none) allowed=0 ;;
+    code) [ "$kind" = "code" ] && allowed=1 ;;
+    all)  allowed=1 ;;
+    *)    printf '%s\n' "$policy" | grep -qxF "$repo" && allowed=1 ;;
+esac
+
+if [ "$allowed" = "1" ]; then
+    echo "  claude-sync: push allowed by policy ($policy) -- $repo -> $remote_name" >&2
+    exit 0
+fi
+
+n=$(git rev-list --count "@{u}..HEAD" 2>/dev/null || echo "?")
+echo "" >&2
+echo "  ==========================================================" >&2
+echo "  PUSH BLOCKED -- claude-sync push policy: $(printf '%s' "$policy" | head -1)" >&2
+echo "  ==========================================================" >&2
+echo "  repo    : $repo  ($kind, branch $branch)" >&2
+echo "  remote  : $remote_name  $remote_url" >&2
+echo "  commits : $n ahead of upstream" >&2
+echo "" >&2
+echo "  Before allowing it (public repos are public forever):" >&2
+echo "    - secrets sweep: .env, API keys, tokens, wifi credentials" >&2
+echo "    - check the diff is what you think it is" >&2
+echo "" >&2
+echo "  This push only:   ALLOW_PUSH=1 git push" >&2
+echo "  Change the rule:  edit tools/githooks/push-policy" >&2
+echo "  ==========================================================" >&2
+echo "" >&2
+exit 1

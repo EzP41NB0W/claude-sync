@@ -1,0 +1,7 @@
+# The core (rollup.py CLI + the knowledge base) needs none of these.
+# Install only what you use:
+fastmcp    # MCP server (mcp_server.py) -- lets Claude read/write the KB as tools
+flask      # local web dashboard (server.py + dashboard.html, 127.0.0.1 only)
+pystray    # Windows tray monitor (tray.py)
+pillow     # Windows tray monitor icon (tray.py)
+pywin32    # optional: tray single-instance guard (falls back without it)
