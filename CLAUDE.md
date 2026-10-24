@@ -11,8 +11,11 @@ Read it first, every session (or call the `get_project` MCP tool with
 
 ## The two things you must not get wrong
 
-1. **ALL project code lives in `code/<project-name>/`**, each its own git repo.
-   Notes live in `knowledge-base/projects/<project-name>/handoff.md`.
+1. **ALL project code lives in a project repo** (`code/<project-name>/`, or
+   another root listed in `claude-sync.json`), each its own git repo. Notes
+   live in `knowledge-base/projects/<project-name>/handoff.md`, or in the
+   repo's own `HANDOFF.md` when `notes_home` is `repo`. `get_project` says
+   which (`append_next_entry_to`).
 2. **Before creating any "new" project, check `knowledge-base/projects/`** for
    an existing one of that name or lineage. A new task is often a continuation.
 

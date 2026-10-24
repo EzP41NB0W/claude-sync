@@ -74,7 +74,14 @@ def get_project(name: str, part: str = "auto") -> dict:
             "error": f"'{name}' not found",
             "known_projects": sorted(manifest),
         }
-    return {"name": name, "part": part, "text": section}
+    entry = rollup.get_manifest().get(name, {})
+    out = {"name": name, "part": part, "text": section,
+           "sources": entry.get("sources", [])}
+    if name != "_learnings":
+        # notes_home (claude-sync.json) decides where the NEXT entry goes
+        out["append_next_entry_to"] = rollup.handoff_target(name)
+        out["notes_home"] = rollup.CONFIG["notes_home"]
+    return out
 
 
 @mcp.tool()

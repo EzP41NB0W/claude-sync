@@ -22,9 +22,12 @@ or conflicting, **this file is the durable source of truth**. Setup
 3. **Match existing project folder names exactly** (case, hyphens, spacing)
    before creating or writing to one. Check `knowledge-base/projects/` first:
    a "new" task is often a continuation of an existing project.
-4. **Code lives in `code/<project-name>/`, notes in
-   `knowledge-base/projects/<project-name>/`.** Never scatter project folders
-   elsewhere on disk.
+4. **Code lives in a project repo (`code/<project-name>/` or another
+   `repo_roots` folder in `claude-sync.json`); notes live in
+   `knowledge-base/projects/<project-name>/handoff.md`, or in the repo's own
+   `HANDOFF.md` when `notes_home` is `repo`.** Never scatter project folders
+   elsewhere on disk. The two-layer rule below applies to central (`kb`)
+   notes; in-repo notes are committed with the code.
    - **Two layers of git.** The knowledge-base root ignores `code/`; each
      `code/<name>/` is its OWN repo. A root commit after code work succeeds and
      contains none of the code. Commit inside the project repo for source, at

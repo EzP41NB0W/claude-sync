@@ -30,6 +30,15 @@ person and generalized; their projects and personal notes are not included.
 - The knowledge base itself should stay local unless they insist (`all`):
   explain that it will hold notes about their work and about them.
 
+**Where their notes should live** (this sets `claude-sync.json`)
+- Do their repos already move between machines (cloud sessions, a laptop and
+  a desktop, `git pull` everywhere)? Then they probably want notes IN each repo
+  (`"notes_home": "repo"`, a `HANDOFF.md` per repo) and the lessons file in a
+  synced place (`learnings_path`). One machine with many loose projects: the
+  default central `kb` mode, no config file needed.
+- Where do their repos live? Anything outside this folder goes in
+  `repo_roots`.
+
 **How they like to work** (this goes into CLAUDE.md for every future session)
 - Tone (terse? casual? jokes welcome?), how much explanation, how they want to
   be corrected, anything they want verified on real hardware before it's
@@ -41,7 +50,10 @@ person and generalized; their projects and personal notes are not included.
    `_learnings`.
 2. `git remote -v`: if `origin` is the template's GitHub, `git remote remove
    origin` (or rename to `upstream`). Their knowledge base is private.
-3. Write their push policy into `tools/githooks/push-policy`.
+3. Write their push policy into `tools/githooks/push-policy`. If they chose
+   notes-in-repo, copy `claude-sync.example.json` to `claude-sync.json` and
+   fill it in, then `python rollup.py build` and confirm their repo
+   `HANDOFF.md` files show up in `python rollup.py list`.
 4. `bash tools/githooks/install.sh`.
 5. Optional, per Step 1: `pip install fastmcp flask` (and `pystray pillow` on
    Windows). Register the MCP server:

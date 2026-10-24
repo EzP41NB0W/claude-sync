@@ -1,0 +1,6 @@
+{
+  "notes_home": "repo",
+  "repo_roots": ["code", "~/src"],
+  "repo_handoff_names": ["HANDOFF.md", "handoff.md", "docs/HANDOFF.md"],
+  "learnings_path": "~/dotfiles/claude/learnings.md"
+}

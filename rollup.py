@@ -1,7 +1,8 @@
 """
 rollup.py — Build the global cross-project knowledge rollup.
 
-Reads every knowledge-base/projects/<name>/handoff.md, plus the standing
+Reads every knowledge-base/projects/<name>/handoff.md AND every HANDOFF.md kept
+inside a project's own repo (notes-in-repo mode, see claude-sync.json), plus the standing
 knowledge-base/_global/learnings.md (cross-project notes that don't belong
 to any one project — fed by `learn` or the dashboard's quick-capture box),
 and bin-packs them into knowledge-base/_global/rollup_NNN.md chunks, never
@@ -40,6 +41,105 @@ GLOBAL_DIR = ROOT / "knowledge-base" / "_global"
 MANIFEST_PATH = GLOBAL_DIR / "manifest.json"
 LEARNINGS_PATH = GLOBAL_DIR / "learnings.md"  # standing cross-project notes, hand- or dashboard-edited
 
+# --- claude-sync.json (optional) ---------------------------------------------
+# Two ways to keep notes, and any mix of them:
+#   "kb"   central: knowledge-base/projects/<name>/handoff.md (local, private)
+#   "repo" in each project's own repo: <repo>/HANDOFF.md, committed and pulled
+#          with the code -- for people whose repos already travel between
+#          machines (cloud sessions, several boxes). The rollup indexes BOTH
+#          kinds either way; notes_home only says where NEW entries go.
+CONFIG_PATH = ROOT / "claude-sync.json"
+DEFAULT_CONFIG = {
+    "notes_home": "kb",
+    "repo_roots": ["code"],      # folders whose sub-folders are project repos
+    "repo_handoff_names": ["HANDOFF.md", "handoff.md", "docs/HANDOFF.md"],
+    "learnings_path": None,      # e.g. "~/dotfiles/claude/learnings.md"
+}
+
+
+def _resolve(p: str) -> Path:
+    q = Path(os.path.expandvars(os.path.expanduser(p)))
+    return q if q.is_absolute() else ROOT / q
+
+
+def load_config() -> dict:
+    cfg = dict(DEFAULT_CONFIG)
+    if CONFIG_PATH.exists():
+        try:
+            user = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+            cfg.update({k: v for k, v in user.items() if k in DEFAULT_CONFIG})
+        except (OSError, ValueError) as e:
+            print(f"[claude-sync] ignoring unreadable {CONFIG_PATH.name}: {e}", file=sys.stderr)
+    if cfg["notes_home"] not in ("kb", "repo"):
+        print(f"[claude-sync] notes_home must be 'kb' or 'repo', got {cfg['notes_home']!r}; using 'kb'",
+              file=sys.stderr)
+        cfg["notes_home"] = "kb"
+    return cfg
+
+
+CONFIG = load_config()
+if CONFIG["learnings_path"]:
+    LEARNINGS_PATH = _resolve(CONFIG["learnings_path"])
+
+
+def repo_dirs() -> list[Path]:
+    """Every project repo under the configured repo_roots (immediate sub-folders,
+    hidden ones skipped), sorted, de-duplicated."""
+    seen, out = set(), []
+    for r in CONFIG["repo_roots"]:
+        base = _resolve(r)
+        if not base.is_dir():
+            continue
+        for d in sorted(base.iterdir()):
+            if d.is_dir() and not d.name.startswith(".") and d.resolve() not in seen:
+                seen.add(d.resolve())
+                out.append(d)
+    return out
+
+
+def repo_handoff(repo: Path) -> Path | None:
+    for name in CONFIG["repo_handoff_names"]:
+        p = repo / name
+        if p.is_file():
+            return p
+    return None
+
+
+def handoff_sources() -> dict[str, list[Path]]:
+    """{project_name: [handoff files]} -- the central one first, then the repo's."""
+    src: dict[str, list[Path]] = {}
+    if PROJECTS_DIR.exists():
+        for proj_dir in sorted(PROJECTS_DIR.iterdir()):
+            h = proj_dir / "handoff.md"
+            if proj_dir.is_dir() and h.exists():
+                src.setdefault(proj_dir.name, []).append(h)
+    for repo in repo_dirs():
+        h = repo_handoff(repo)
+        if h:
+            src.setdefault(repo.name, []).append(h)
+    return dict(sorted(src.items()))
+
+
+def handoff_target(name: str) -> str:
+    """Where a session should APPEND the next entry for project `name`:
+    the repo's HANDOFF.md in notes_home "repo" mode (an existing one, or a new
+    one in the project's repo under repo_roots), else the central handoff.md."""
+    if CONFIG["notes_home"] == "repo":
+        for repo in repo_dirs():
+            if repo.name == name:
+                return _display(repo_handoff(repo) or repo / CONFIG["repo_handoff_names"][0])
+        roots = CONFIG["repo_roots"]
+        base = _resolve(roots[0]) if roots else ROOT / "code"
+        return _display(base / name / CONFIG["repo_handoff_names"][0])
+    return _display(PROJECTS_DIR / name / "handoff.md")
+
+
+def _display(p: Path) -> str:
+    try:
+        return p.relative_to(ROOT).as_posix()
+    except ValueError:
+        return str(p)
+
 MAX_CHUNK_LINES = 800  # bin-packing target size per rollup file
 
 
@@ -54,14 +154,14 @@ def load_projects() -> dict[str, str]:
         text = LEARNINGS_PATH.read_text(encoding="utf-8").strip()
         if text:
             projects["_learnings"] = text
-    if not PROJECTS_DIR.exists():
-        return projects
-    for proj_dir in sorted(PROJECTS_DIR.iterdir()):
-        if not proj_dir.is_dir():
-            continue
-        handoff = proj_dir / "handoff.md"
-        if handoff.exists():
-            projects[proj_dir.name] = handoff.read_text(encoding="utf-8")
+    for name, paths in handoff_sources().items():
+        if len(paths) == 1:
+            projects[name] = paths[0].read_text(encoding="utf-8")
+        else:
+            # central + in-repo notes for the same project: both, each labelled
+            parts = [f"*notes from `{_display(p)}`*\n\n" + p.read_text(encoding="utf-8").strip()
+                     for p in paths]
+            projects[name] = "\n\n---\n\n".join(parts) + "\n"
     return projects
 
 
@@ -76,11 +176,8 @@ def load_mtimes() -> dict[str, str]:
     mtimes: dict[str, str] = {}
     if LEARNINGS_PATH.exists():
         mtimes["_learnings"] = iso(LEARNINGS_PATH)
-    if PROJECTS_DIR.exists():
-        for proj_dir in sorted(PROJECTS_DIR.iterdir()):
-            handoff = proj_dir / "handoff.md"
-            if proj_dir.is_dir() and handoff.exists():
-                mtimes[proj_dir.name] = iso(handoff)
+    for name, paths in handoff_sources().items():
+        mtimes[name] = iso(max(paths, key=lambda p: p.stat().st_mtime))
     return mtimes
 
 
@@ -137,12 +234,16 @@ def check_duplicate_names(projects: dict[str, str]) -> None:
 def build() -> None:
     projects = load_projects()
     if not projects:
-        print("No projects found under knowledge-base/projects/ — nothing to roll up.")
+        print("No projects found (knowledge-base/projects/*/handoff.md or a HANDOFF.md "
+              "in a repo under repo_roots) — nothing to roll up.")
         return
 
     check_duplicate_names(projects)
 
     mtimes = load_mtimes()
+    sources = {n: [_display(p) for p in ps] for n, ps in handoff_sources().items()}
+    if LEARNINGS_PATH.exists():
+        sources["_learnings"] = [_display(LEARNINGS_PATH)]
     chunks = bin_pack(projects)
     GLOBAL_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -164,6 +265,7 @@ def build() -> None:
                 "start_line": start_line,
                 "end_line": end_line,
                 "modified": mtimes.get(name),
+                "sources": sources.get(name, []),
             }
             out_lines.append("")  # separator before next section
         chunk_path.write_text("\n".join(out_lines).rstrip("\n") + "\n", encoding="utf-8")
@@ -205,9 +307,7 @@ def dirty_code_repos() -> list[dict]:
     where an upstream exists. Never raises.
     """
     out: list[dict] = []
-    if not CODE_DIR.exists():
-        return out
-    for path in sorted(CODE_DIR.iterdir()):
+    for path in repo_dirs():
         if not (path / ".git").exists():
             continue
         status = _git(path, "status", "--porcelain")
@@ -400,11 +500,9 @@ def search_code(query: str, max_results: int = 40, context: int = 0,
 
     Returns [{project, file, line, text, snippet, score}] — file is relative
     to code/ (e.g. 'my-project/src/main.cpp')."""
-    if not CODE_DIR.exists():
-        return []
     q_lower = query.lower()
     q_norm = _search_norm(query)
-    roots = [CODE_DIR / project] if project else [CODE_DIR]
+    roots = [r for r in repo_dirs() if project is None or r.name == project]
     hits: list[dict] = []
     stop = False
     for root in roots:
@@ -423,7 +521,7 @@ def search_code(query: str, max_results: int = 40, context: int = 0,
                 except (OSError, UnicodeDecodeError):
                     continue  # unreadable, gone, or binary (non-UTF-8 bytes)
                 lines = text.split("\n")
-                rel = fpath.relative_to(CODE_DIR).as_posix()
+                rel = f"{root.name}/{fpath.relative_to(root).as_posix()}"
                 for i, ln in enumerate(lines):
                     if _matches(ln, q_lower, q_norm):
                         hits.append({

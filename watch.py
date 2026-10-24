@@ -30,14 +30,17 @@ WATCH_GLOBS = (
 
 def signature(root: Path) -> tuple:
     """A cheap fingerprint of everything we care about: (path, size, mtime)
-    per watched file. Catches handoff.md edits and scratch-file drops."""
+    per watched file. Catches handoff.md edits, in-repo HANDOFF.md edits
+    (notes-in-repo mode), a relocated learnings file, and scratch-file drops."""
+    files = [p for pattern in WATCH_GLOBS for p in sorted(root.glob(pattern))]
+    files += [h for r in rollup.repo_dirs() if (h := rollup.repo_handoff(r))]
+    files.append(rollup.LEARNINGS_PATH)
     sig = []
-    for pattern in WATCH_GLOBS:
-        for p in sorted(root.glob(pattern)):
-            if p.is_file():
-                st = p.stat()
-                sig.append((str(p.relative_to(root)), st.st_size, int(st.st_mtime)))
-    return tuple(sig)
+    for p in files:
+        if p.is_file():
+            st = p.stat()
+            sig.append((str(p), st.st_size, int(st.st_mtime)))
+    return tuple(sorted(set(sig)))
 
 
 def run_once() -> None:

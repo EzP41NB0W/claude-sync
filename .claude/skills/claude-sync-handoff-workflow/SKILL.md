@@ -5,7 +5,7 @@ description: Session start/end discipline for the claude-sync cross-project know
 
 # claude-sync handoff workflow
 
-claude-sync is a cross-project knowledge base: notes live in `knowledge-base/projects/<name>/handoff.md`, code lives separately in `code/<name>/`. This skill is the operating discipline for both, so nothing silently drifts between what the notes claim and what's actually on disk.
+claude-sync is a cross-project knowledge base. A project's notes live either centrally in `knowledge-base/projects/<name>/handoff.md` or inside the project's own repo as `HANDOFF.md` (notes-in-repo mode, set by `notes_home` in `claude-sync.json`); code lives in the project repo under `code/<name>/` or another configured repo root. The rollup indexes both kinds of notes either way. This skill is the operating discipline for both, so nothing silently drifts between what the notes claim and what's actually on disk.
 
 ## At session start
 
@@ -26,7 +26,7 @@ Big handoffs should keep a `## Current state` section near the top that gets *re
 
 ## After any session producing code or decisions
 
-1. Update the project's `handoff.md` in append-only style, dated — don't rewrite history, add a new dated section.
+1. Append a dated section to the project's notes, never rewriting history. **Where:** the `append_next_entry_to` path that `get_project` returns (central `handoff.md` in `kb` mode, the repo's `HANDOFF.md` in `repo` mode). In `repo` mode the notes are committed WITH the code, in the project repo, in the same commit.
 2. Save current code to `code/<name>/` (with the `.history` backup step above if overwriting).
 3. Call `add_learning` for anything that's a cross-project lesson or dead end rather than project-specific (goes to `_learnings`, not buried in one project's doc).
 4. Call `build_rollup` so the change is actually reflected in `list_projects`/`get_project` — editing handoff.md by hand or calling `add_learning` does NOT auto-rebuild the rollup.

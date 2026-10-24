@@ -68,14 +68,45 @@ Your knowledge base is private, so `git remote remove origin` (or rename it
 The knowledge base holds your notes about your work and you; most people want
 `code` at most.
 
+## Notes in each repo instead? (`claude-sync.json`)
+
+By default notes live centrally in `knowledge-base/projects/` and never leave
+the machine. If your repos already travel (cloud sessions, several machines,
+`git pull` everywhere), keep each project's notes **inside its repo** as
+`HANDOFF.md` and let claude-sync index them instead of owning them. Create
+`claude-sync.json` next to `rollup.py` (see `claude-sync.example.json`):
+
+```json
+{
+  "notes_home": "repo",
+  "repo_roots": ["code", "~/src"],
+  "learnings_path": "~/dotfiles/claude/learnings.md"
+}
+```
+
+- `notes_home`: where NEW entries go: `kb` (central, the default) or `repo`
+  (`<repo>/HANDOFF.md`, committed and pulled with the code). The rollup reads
+  both kinds regardless, and a project with both shows both, labelled.
+- `repo_roots`: folders whose sub-folders are your project repos; they don't
+  have to live under this folder. Code search and the uncommitted-work report
+  cover all of them.
+- `learnings_path`: keep the cross-project lessons file somewhere that syncs
+  (a dotfiles repo), instead of `knowledge-base/_global/learnings.md`.
+- `repo_handoff_names` (optional): file names to look for, default
+  `HANDOFF.md`, `handoff.md`, `docs/HANDOFF.md`.
+
+`get_project` tells Claude where the next entry goes (`append_next_entry_to`).
+`python test_notes_in_repo.py` exercises the whole mode on a throwaway tree.
+
 ## How a session uses it
 
 1. Start: read `learnings.md` (the rulebook) and the project's `handoff.md`
    (`get_project`).
 2. Work. Code goes in `code/<name>/`, its own repo.
 3. End: append a dated entry to the handoff (what changed, what's verified vs
-   assumed, what's next), `add_learning` for cross-project lessons,
-   `build_rollup`, commit in both layers.
+   assumed, what's next) where `get_project` says (`append_next_entry_to`),
+   `add_learning` for cross-project lessons, `build_rollup`, and commit: in
+   both layers in `kb` mode, or just the project repo in `repo` mode.
 
 The single most important convention: **never write "working" unless it was
 verified** on the real thing. Notes that overclaim poison every later session.
